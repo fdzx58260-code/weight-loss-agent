@@ -3,6 +3,53 @@ import type { Message, SessionState, UserProfile, DailyLog, ChatResponse } from 
 
 export { getInitialMessage }
 
+function callElbntAI(apiKey: string, body: object): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const https = require('https')
+    const payload = JSON.stringify(body)
+
+    const options = {
+      hostname: 'www.elbnt.ai',
+      port: 443,
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      timeout: 60000,
+    }
+
+    const req = https.request(options, (res: any) => {
+      let data = ''
+      res.on('data', (chunk: any) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          if (json.content?.[0]?.text) {
+            resolve(json.content[0].text)
+          } else {
+            reject(new Error(`API error: ${data}`))
+          }
+        } catch (e) {
+          reject(new Error(`Parse error: ${data}`))
+        }
+      })
+    })
+
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error('Request timed out after 60s'))
+    })
+
+    req.on('error', (e: Error) => reject(e))
+    req.write(payload)
+    req.end()
+  })
+}
+
 export async function getAIResponse(
   userMessage: string,
   messages: Message[],
@@ -10,41 +57,28 @@ export async function getAIResponse(
   userProfile?: UserProfile,
   recentLogs: DailyLog[] = []
 ): Promise<ChatResponse> {
-  const hasKey = !!process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.ANTHROPIC_API_KEY
 
-  if (!hasKey) {
+  if (!apiKey) {
     const { response, updatedState, profileUpdate } = getMockResponse(
-      userMessage,
-      messages,
-      sessionState,
-      userProfile
+      userMessage, messages, sessionState, userProfile
     )
     return { message: response, sessionState: updatedState, profileUpdate: profileUpdate as Partial<UserProfile> | undefined }
   }
 
-  // Claude (Anthropic) 路径
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default
     const { SYSTEM_PROMPT, buildContextPrompt } = await import('./prompts')
-
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const context = buildContextPrompt(userProfile ?? {}, recentLogs)
-    const sysPrompt = SYSTEM_PROMPT + context
 
-    const response = await client.messages.create({
-      model: 'claude-opus-4-6',
+    const content = await callElbntAI(apiKey, {
+      model: 'claude-sonnet-4-6',
       max_tokens: 800,
-      system: sysPrompt,
-      messages: messages.slice(-20).map((m) => ({
+      system: SYSTEM_PROMPT + context,
+      messages: messages.slice(-10).map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
     })
-
-    const textBlock = response.content.find((b) => b.type === 'text')
-    const content = textBlock && textBlock.type === 'text'
-      ? textBlock.text
-      : '抱歉，暂时没有收到回复，请稍后再试。'
 
     let profileUpdate: Partial<UserProfile> | undefined
     if (/怀孕|备孕|哺乳/.test(userMessage)) {
@@ -59,7 +93,7 @@ export async function getAIResponse(
       profileUpdate,
     }
   } catch (err) {
-    console.error('Anthropic error, fallback to mock:', err)
+    console.error('AI error, fallback to mock:', err)
     const { response, updatedState, profileUpdate } = getMockResponse(userMessage, messages, sessionState, userProfile)
     return { message: response, sessionState: updatedState, profileUpdate: profileUpdate as Partial<UserProfile> | undefined }
   }

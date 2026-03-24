@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 120 // seconds
 import { getAIResponse } from '@/lib/ai/client'
 import type { ChatRequest } from '@/lib/types'
 

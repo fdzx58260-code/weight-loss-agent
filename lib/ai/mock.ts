@@ -367,14 +367,7 @@ const RESPONSES: Record<string, string> = {
 
 今天体重是多少？顺便记录一下会更完整。`,
 
-  GENERAL: `我理解你的情况。
-
-如果你想聊具体的：
-- **记录今天的体重或用药** → 直接告诉我数字
-- **有什么不舒服** → 描述一下症状，我来帮你分析
-- **考虑复购** → 告诉我，我帮你做一个简单评估
-
-有什么我可以帮你的？`,
+  GENERAL: ``,
 
   INTENT: `想开始减重用药，先做初步了解是对的。
 
@@ -512,8 +505,23 @@ export function getMockResponse(
         response: assistantMsg(RESPONSES.INTENT),
         updatedState: { ...sessionState, stage: 'assessment', assessment: { step: 1, completed: false, collectedProfile: {} } },
       }
-    default:
-      return { response: assistantMsg(RESPONSES.GENERAL), updatedState: sessionState }
+    default: {
+      // 根据用户消息内容生成有针对性的兜底回复
+      const msg = userMessage.trim()
+      let fallback = ''
+      if (/买|购|哪里|怎么买|渠道/.test(msg)) {
+        fallback = '购药建议通过正规渠道或原来开药的顾问咨询，他们可以帮你确认当前情况是否适合继续用药并提供购买方案。'
+      } else if (/介绍|什么是|怎么用|怎样/.test(msg)) {
+        fallback = '这个问题我需要了解更多细节才能回答准确。你可以描述得更具体一些，比如你目前用的是哪种药、用了多久，我来帮你分析。'
+      } else if (/整理|帮我|总结/.test(msg)) {
+        fallback = '好的，你希望我帮你整理哪方面的内容？可以再说具体一点。'
+      } else if (/改|更新|修改/.test(msg)) {
+        fallback = '你想修改什么内容？可以告诉我具体是哪项数据，比如体重、目标体重或者用药信息。'
+      } else {
+        fallback = '收到。你能说得再具体一点吗？比如是关于用药副作用、体重记录，还是复购咨询——这样我能给你更准确的帮助。'
+      }
+      return { response: assistantMsg(fallback), updatedState: sessionState }
+    }
   }
 }
 
