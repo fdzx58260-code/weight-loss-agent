@@ -23,7 +23,7 @@ function getAssessmentQuestion(step: number, data: Record<string, unknown>): str
 **请问你今年多大了？**`
 
     case 1:
-      return `好的，${data.age} 岁。请问你的性别是？（男 / 女）`
+      return `好的${data.age ? `，${data.age} 岁` : ''}。请问你的性别是？（男 / 女）`
 
     case 2:
       return `请问你的身高是多少厘米？`
